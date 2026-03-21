@@ -2,10 +2,23 @@ import time
 import functools
 from collections import OrderedDict, defaultdict
 
-def memoize(funktsiya, rozmir_keshu=None, polityka='lru'):
+def memoize(funktsiya, rozmir_keshu=None, polityka='lru', chas_zhyttya=None):
     kesh = OrderedDict()
     lichylnyk_zvertanj = defaultdict(int)
     chas_stvorennya = {}
+
+    def _vydalyty_zastarily():
+        if chas_zhyttya is None:
+            return
+        potochnyy_chas = time.time()
+        klyuchi_dlya_vydalennya = [
+            klyuch for klyuch, chas in chas_stvorennya.items()
+            if potochnyy_chas - chas > chas_zhyttya
+        ]
+        for klyuch in klyuchi_dlya_vydalennya:
+            kesh.pop(klyuch, None)
+            lichylnyk_zvertanj.pop(klyuch, None)
+            chas_stvorennya.pop(klyuch, None)
 
     def _zastosuvatyEviktsiynu():
         if rozmir_keshu is None or len(kesh) < rozmir_keshu:
@@ -23,8 +36,17 @@ def memoize(funktsiya, rozmir_keshu=None, polityka='lru'):
                     chas_stvorennya.pop(klyuch, None)
                     break
 
+        elif polityka == 'ttl':
+            if kesh:
+                najstarshyy = min(chas_stvorennya, key=chas_stvorennya.get)
+                kesh.pop(najstarshyy, None)
+                lichylnyk_zvertanj.pop(najstarshyy, None)
+                chas_stvorennya.pop(najstarshyy, None)
+
     @functools.wraps(funktsiya)
     def obgortka(*arhy, **kvarhy):
+        _vydalyty_zastarily()
+
         klyuch_keshu = (arhy, tuple(sorted(kvarhy.items())))
 
         if klyuch_keshu in kesh:
