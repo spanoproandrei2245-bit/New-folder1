@@ -2,7 +2,8 @@ import time
 import functools
 from collections import OrderedDict, defaultdict
 
-def memoize(funktsiya, rozmir_keshu=None, polityka='lru', chas_zhyttya=None):
+
+def memoize(funktsiya, rozmir_keshu=None, polityka='lru', chas_zhyttya=None, svoya_polityka=None):
     kesh = OrderedDict()
     lichylnyk_zvertanj = defaultdict(int)
     chas_stvorennya = {}
@@ -22,6 +23,14 @@ def memoize(funktsiya, rozmir_keshu=None, polityka='lru', chas_zhyttya=None):
 
     def _zastosuvatyEviktsiynu():
         if rozmir_keshu is None or len(kesh) < rozmir_keshu:
+            return
+
+        if svoya_polityka is not None:
+            klyuch_dlya_vydalennya = svoya_polityka(kesh, lichylnyk_zvertanj, chas_stvorennya)
+            if klyuch_dlya_vydalennya is not None:
+                kesh.pop(klyuch_dlya_vydalennya, None)
+                lichylnyk_zvertanj.pop(klyuch_dlya_vydalennya, None)
+                chas_stvorennya.pop(klyuch_dlya_vydalennya, None)
             return
 
         if polityka == 'lru':
@@ -65,4 +74,28 @@ def memoize(funktsiya, rozmir_keshu=None, polityka='lru', chas_zhyttya=None):
 
         return rezultat
 
+    def ochystyty_kesh():
+        kesh.clear()
+        lichylnyk_zvertanj.clear()
+        chas_stvorennya.clear()
+
+    def status_keshu():
+        return {
+            'rozmir': len(kesh),
+            'maksymalnyy_rozmir': rozmir_keshu,
+            'polityka': polityka if svoya_polityka is None else 'svoya',
+            'klyuchi': list(kesh.keys()),
+            'zvernannya': dict(lichylnyk_zvertanj),
+        }
+
+    obgortka.ochystyty_kesh = ochystyty_kesh
+    obgortka.status_keshu = status_keshu
+
     return obgortka
+
+
+def dekorator_memoize(rozmir_keshu=None, polityka='lru', chas_zhyttya=None, svoya_polityka=None):
+    def dekorator(funktsiya):
+        return memoize(funktsiya, rozmir_keshu=rozmir_keshu, polityka=polityka,
+                       chas_zhyttya=chas_zhyttya, svoya_polityka=svoya_polityka)
+    return dekorator
