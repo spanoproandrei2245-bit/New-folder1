@@ -47,3 +47,62 @@ async def generate_csv_stream(total_rows: int = 1_000_000, chunk_size: int = 500
         yield buffer.getvalue()
         rows_yielded += batch
         await asyncio.sleep(0)
+
+async def parse_transactions(source: AsyncIterator[str], filter_min: Optional[float] = None, filter_max: Optional[float] = None) -> AsyncIterator[Transaction]:
+    header_skipped = False
+    leftover = ""
+
+    async for chunk in source:
+        lines = (leftover + chunk).split("\n")
+        leftover = lines[-1]
+
+        for line in lines[:-1]:
+            if not header_skipped:
+                header_skipped = True
+                continue
+            if not line.strip():
+                continue
+            try:
+                tx_id, user_id, amount_str, category, ts_str = line.split(",")
+                amount = float(amount_str)
+                if filter_min is not None and amount < filter_min:
+                    continue
+                if filter_max is not None and amount > filter_max:
+                    continue
+                
+                yield Transaction(
+                    id=tx_id,
+                    user_id=user_id,
+                    amount=amount,
+                    category=category,
+                    timestamp=float(ts_str),
+                )
+            except (ValueError, AttributeError):
+                pass
+
+async def batch_processor(source: AsyncIterator[Transaction], batch_size: int = 1_000) -> AsyncIterator[list[Transaction]]:
+    batch: list[Transaction] = []
+    async for tx in source:
+        batch.append(tx)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+async def aggregate_stats(source: AsyncIterator[Transaction]) -> StreamStats:
+    stats = StreamStats()
+    async for tx in source:
+        stats.total_records += 1
+        stats.total_amount += tx.amount
+        stats.category_totals[tx.category] += tx.amount
+        if tx.amount > stats.max_amount:
+            stats.max_amount = tx.amount
+        if tx.amount < stats.min_amount:
+            stats.min_amount = tx.amount
+    return stats
+
+async def detect_large_transactions(source: AsyncIterator[Transaction], threshold: float = 5_000.0) -> AsyncIterator[Transaction]:
+    async for tx in source:
+        if tx.amount >= threshold:
+            yield tx
