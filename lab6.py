@@ -106,3 +106,67 @@ async def detect_large_transactions(source: AsyncIterator[Transaction], threshol
     async for tx in source:
         if tx.amount >= threshold:
             yield tx
+            
+async def run_full_pipeline(total_rows: int = 200_000):
+    print(f"Запуск обробки потоку ({total_rows:,} рядків)")
+
+    t0 = time.perf_counter()
+
+    raw_stream = generate_csv_stream(total_rows, chunk_size=1_000)
+    tx_stream = parse_transactions(raw_stream, filter_min=10.0)
+
+    large_txs: list[Transaction] = []
+    stats = StreamStats()
+
+    async for tx in tx_stream:
+        stats.total_records += 1
+        stats.total_amount += tx.amount
+        stats.category_totals[tx.category] += tx.amount
+        
+        if tx.amount > stats.max_amount:
+            stats.max_amount = tx.amount
+        if tx.amount < stats.min_amount:
+            stats.min_amount = tx.amount
+
+        if tx.amount >= 9_000.0 and len(large_txs) < 5:
+            large_txs.append(tx)
+
+    elapsed = time.perf_counter() - t0
+
+    print(f"\nРезультати (оброблено за {elapsed:.2f} с)")
+    print(f"Оброблено записів: {stats.total_records:>12,}")
+    print(f"Загальна сума: ₴{stats.total_amount:>14,.2f}")
+    print(f"Середній чек: ₴{stats.total_amount / max(stats.total_records, 1):>14,.2f}")
+    print(f"Макс. транзакція: ₴{stats.max_amount:>14,.2f}")
+    print(f"Мін. транзакція: ₴{stats.min_amount:>14,.2f}")
+
+    print("\nВитрати по категоріях:")
+    for cat, total in sorted(stats.category_totals.items()):
+        print(f"  {cat:<15} ₴{total:>14,.2f}")
+
+    print(f"\nПриклади великих транзакцій (від ₴9,000):")
+    for tx in large_txs:
+        print(f"  [{tx.id}] {tx.user_id} | ₴{tx.amount:,.2f} | {tx.category}")
+
+    return stats
+
+async def run_batch_demo(total_rows: int = 50_000):
+    print(f"\nДемо батч-обробки ({total_rows:,} рядків, розмір батчу=2000)")
+
+    raw_stream = generate_csv_stream(total_rows, chunk_size=500)
+    tx_stream = parse_transactions(raw_stream)
+    batches = batch_processor(tx_stream, batch_size=2_000)
+
+    batch_count = 0
+    total_processed = 0
+
+    async for batch in batches:
+        batch_count += 1
+        total_processed += len(batch)
+        await asyncio.sleep(0)
+
+        if batch_count <= 3 or batch_count % 5 == 0:
+            avg = sum(t.amount for t in batch) / len(batch)
+            print(f"Батч #{batch_count:>3} | розмір: {len(batch):>5} | середній чек: ₴{avg:>8,.2f} | всього оброблено: {total_processed:>7,}")
+
+    print(f"\nГотово - {batch_count} батчів, {total_processed:,} записів загалом")
