@@ -106,7 +106,7 @@ async def detect_large_transactions(source: AsyncIterator[Transaction], threshol
     async for tx in source:
         if tx.amount >= threshold:
             yield tx
-            
+
 async def run_full_pipeline(total_rows: int = 200_000):
     print(f"Запуск обробки потоку ({total_rows:,} рядків)")
 
@@ -170,3 +170,53 @@ async def run_batch_demo(total_rows: int = 50_000):
             print(f"Батч #{batch_count:>3} | розмір: {len(batch):>5} | середній чек: ₴{avg:>8,.2f} | всього оброблено: {total_processed:>7,}")
 
     print(f"\nГотово - {batch_count} батчів, {total_processed:,} записів загалом")
+
+async def jsonl_source(n: int = 10_000) -> AsyncIterator[str]:
+    for _ in range(n):
+        record = {
+            "id": "".join(random.choices(string.ascii_lowercase, k=6)),
+            "value": round(random.uniform(1, 1000), 2),
+            "tag": random.choice(["A", "B", "C"]),
+        }
+        yield json.dumps(record) + "\n"
+        await asyncio.sleep(0)
+
+async def process_jsonl_stream(source: AsyncIterator[str]) -> AsyncIterator[dict]:
+    async for line in source:
+        line = line.strip()
+        if line:
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                pass
+
+async def run_jsonl_demo():
+    print("\nДемо потоку json lines на 10к записів")
+
+    source = jsonl_source(10_000)
+    records = process_jsonl_stream(source)
+
+    tag_counts: dict[str, int] = defaultdict(int)
+    total_value = 0.0
+    count = 0
+
+    async for rec in records:
+        tag_counts[rec["tag"]] += 1
+        total_value += rec["value"]
+        count += 1
+
+    print(f"Оброблено записів: {count:,}")
+    print(f"Загальна вартість: ₴{total_value:,.2f}")
+    print(f"Розподіл за тегами: { {k: v for k, v in sorted(tag_counts.items())} }")
+
+async def main():
+    print("\nОбробка великих даних - Демо асинхронних потоків\n")
+
+    await run_full_pipeline(total_rows=200_000)
+    await run_batch_demo(total_rows=50_000)
+    await run_jsonl_demo()
+
+    print("\nВсі тести успішно завершені.")
+
+if __name__ == "__main__":
+    asyncio.run(main())
