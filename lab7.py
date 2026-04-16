@@ -162,3 +162,49 @@ class Observable(Generic[T]):
             return lambda: [s.unsubscribe() for s in subs]
 
         return Observable(subscribe_fn)
+
+class Subject(Generic[T]):
+    def __init__(self):
+        self._observers: dict[str, Observer[T]] = {}
+        self._closed = False
+
+    def next(self, value: T) -> None:
+        if not self._closed:
+            for obs in list(self._observers.values()):
+                obs.next(value)
+
+    def error(self, exc: Exception) -> None:
+        if not self._closed:
+            self._closed = True
+            for obs in list(self._observers.values()):
+                obs.error(exc)
+
+    def complete(self) -> None:
+        if not self._closed:
+            self._closed = True
+            for obs in list(self._observers.values()):
+                obs.complete()
+            self._observers.clear()
+
+    def subscribe(self,
+                  on_next: Callable[[T], None] = lambda _: None,
+                  on_error: Callable[[Exception], None] = lambda e: None,
+                  on_complete: Callable[[], None] = lambda: None) -> Subscription:
+        sub_id = str(uuid4())
+        observer = Observer(on_next, on_error, on_complete)
+        self._observers[sub_id] = observer
+
+        def remove():
+            self._observers.pop(sub_id, None)
+
+        return Subscription(remove)
+
+    def as_observable(self) -> Observable[T]:
+        subject = self
+
+        def subscribe_fn(observer: Observer[T]):
+            sub_id = str(uuid4())
+            subject._observers[sub_id] = observer
+            return lambda: subject._observers.pop(sub_id, None)
+
+        return Observable(subscribe_fn)
