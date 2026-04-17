@@ -208,3 +208,71 @@ class Subject(Generic[T]):
             return lambda: subject._observers.pop(sub_id, None)
 
         return Observable(subscribe_fn)
+
+@dataclass
+class SensorReading:
+    sensor_id: str
+    sensor_type: str
+    value: float
+    unit: str
+    timestamp: float = field(default_factory=time.time)
+
+    def __str__(self):
+        return f"[{self.sensor_type.upper():>11}] {self.sensor_id}: {self.value:>6.1f} {self.unit}"
+
+def demo_event_emitter():
+    print("Демо 1: Розумна халупа на базі EventEmitter")
+
+    hub = EventEmitter()
+    log: list[str] = []
+
+    def security_handler(r: SensorReading):
+        msg = f"Охорона <- {r}"
+        print(msg)
+        log.append(msg)
+
+    sub_security = hub.on("рух", security_handler)
+
+    def lighting_handler(r: SensorReading):
+        msg = f"Світло <- {r}"
+        print(msg)
+        log.append(msg)
+
+    sub_lighting = hub.on("рух", lighting_handler)
+
+    def hvac_handler(r: SensorReading):
+        action = "ОХОЛОДЖЕННЯ" if r.value > 25 else "ОБІГРІВ"
+        msg = f"{action} клімату <- {r}"
+        print(msg)
+        log.append(msg)
+
+    hub.on("температура", hvac_handler)
+
+    def chime_handler(r: SensorReading):
+        msg = f"Дзвінок <- двері відчинено (спрацює раз)"
+        print(msg)
+        log.append(msg)
+
+    hub.once("двері", chime_handler)
+
+    readings = [
+        SensorReading("PIR-01", "рух", 1.0, "виявлено"),
+        SensorReading("TMP-01", "температура", 27.3, "C"),
+        SensorReading("DOR-01", "двері", 1.0, "відкрито"),
+        SensorReading("DOR-01", "двері", 1.0, "відкрито"),
+        SensorReading("PIR-02", "рух", 1.0, "виявлено"),
+        SensorReading("TMP-02", "температура", 19.5, "C"),
+    ]
+
+    for r in readings:
+        print(f"\nвідправка '{r.sensor_type}' -> слухачів: {hub.listener_count(r.sensor_type)}")
+        hub.emit(r.sensor_type, r)
+
+    print("\nСвітло відписали від подій руху")
+    sub_lighting.unsubscribe()
+
+    r = SensorReading("PIR-03", "рух", 1.0, "виявлено")
+    print(f"\nвідправка 'рух' -> слухачів: {hub.listener_count('рух')}")
+    hub.emit("рух", r)
+
+    print(f"\nДемо EventEmitter завершено (реакцій: {len(log)})\n")
