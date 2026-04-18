@@ -276,3 +276,112 @@ def demo_event_emitter():
     hub.emit("рух", r)
 
     print(f"\nДемо EventEmitter завершено (реакцій: {len(log)})\n")
+
+def demo_observable():
+    print("-" * 40)
+    print("Демо 2: Обробка потоків через Observable")
+    print("-" * 40)
+
+    readings = [
+        SensorReading("TMP-01", "температура", v, "C")
+        for v in [18.0, 22.5, 26.1, 30.4, 24.8, 19.2, 35.0, 28.3]
+    ]
+
+    source = Observable.from_iterable(readings)
+
+    alerts = (
+        source
+        .filter(lambda r: r.value > 25.0)
+        .map(lambda r: f"ТРИВОГА: темп={r.value}C на {r.sensor_id}")
+    )
+
+    print("\nПотік А - попередження (>25C):")
+    with alerts.subscribe(on_next=lambda msg: print(f"  {msg}")):
+        pass
+
+    normalized = source.map(lambda r: round((r.value - 18) / (35 - 18), 3))
+
+    collected: list[float] = []
+    print("\nПотік Б - нормалізація [0..1]:")
+    with normalized.subscribe(on_next=collected.append):
+        pass
+    print(f"  {collected}")
+
+    smoke_readings = Observable.from_iterable([
+        SensorReading("SMK-01", "дим", 0.02, "ppm"),
+        SensorReading("SMK-02", "дим", 0.45, "ppm"),
+    ])
+    motion_readings = Observable.from_iterable([
+        SensorReading("PIR-01", "рух", 1.0, "виявлено"),
+        SensorReading("PIR-02", "рух", 1.0, "виявлено"),
+    ])
+
+    merged = Observable.merge(smoke_readings, motion_readings)
+    print("\nПотік В - об'єднані дані диму і руху:")
+    merged.subscribe(on_next=lambda r: print(f"  {r}"),
+                     on_complete=lambda: print("  [потік закрито]"))
+    print()
+
+def demo_subject():
+    print("-" * 40)
+    print("Демо 3: Трансляція в реальному часі (Subject)")
+    print("-" * 40)
+
+    sensor_bus: Subject[SensorReading] = Subject()
+
+    received: dict[str, list] = {"dashboard": [], "logger": [], "alert_system": []}
+
+    sub_dash = sensor_bus.subscribe(
+        on_next=lambda r: (
+            received["dashboard"].append(r),
+            print(f"Панель керування <- {r}")
+        )[0]
+    )
+
+    sub_log = sensor_bus.subscribe(
+        on_next=lambda r: (
+            received["logger"].append(r),
+            print(f"Логер <- {r.sensor_type}={r.value}")
+        )[0]
+    )
+
+    sub_alert = sensor_bus.subscribe(
+        on_next=lambda r: (
+            None if r.sensor_type != "дим" else (
+                received["alert_system"].append(r),
+                print(f"Система тривоги <- ВИЯВЛЕНО ДИМ: {r.value} ppm!")
+            )
+        )
+    )
+
+    live_data = [
+        SensorReading("TMP-01", "температура", 23.1, "C"),
+        SensorReading("PIR-01", "рух", 1.0, "виявлено"),
+        SensorReading("SMK-01", "дим", 0.38, "ppm"),
+        SensorReading("TMP-02", "температура", 19.8, "C"),
+    ]
+
+    print()
+    for r in live_data:
+        print(f"надсилаємо: {r}")
+        sensor_bus.next(r)
+        print()
+
+    print("Панель відключилась\n")
+    sub_dash.unsubscribe()
+
+    late_data = [
+        SensorReading("PIR-02", "рух", 1.0, "виявлено"),
+        SensorReading("SMK-02", "дим", 0.55, "ppm"),
+    ]
+    for r in late_data:
+        print(f"надсилаємо: {r}")
+        sensor_bus.next(r)
+        print()
+
+    print("Статистика по підписниках:")
+    for name, items in received.items():
+        print(f"  {name:<15}: {len(items)} записів")
+
+    sensor_bus.complete()
+    print("[генерацію завершено - всі підписники в курсі]\n")
