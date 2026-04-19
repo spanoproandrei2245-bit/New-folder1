@@ -278,9 +278,7 @@ def demo_event_emitter():
     print(f"\nДемо EventEmitter завершено (реакцій: {len(log)})\n")
 
 def demo_observable():
-    print("-" * 40)
     print("Демо 2: Обробка потоків через Observable")
-    print("-" * 40)
 
     readings = [
         SensorReading("TMP-01", "температура", v, "C")
@@ -323,9 +321,7 @@ def demo_observable():
     print()
 
 def demo_subject():
-    print("-" * 40)
     print("Демо 3: Трансляція в реальному часі (Subject)")
-    print("-" * 40)
 
     sensor_bus: Subject[SensorReading] = Subject()
 
@@ -387,9 +383,7 @@ def demo_subject():
     print("[генерацію завершено - всі підписники в курсі]\n")
 
 async def demo_async_subject():
-    print("-" * 40)
     print("Демо 4: Асинхронний Subject")
-    print("-" * 40)
 
     bus: Subject[SensorReading] = Subject()
 
@@ -427,9 +421,7 @@ async def main():
     demo_subject()
     await demo_async_subject()
 
-    print("-" * 40)
     print("Що ми тут показали:")
-    print("-" * 40)
     rows = [
         ("EventEmitter", "Паб/саб по іменах подій, метод once()"),
         ("Observable", "Лінивий потік, оператори map/filter/merge"),
