@@ -385,3 +385,62 @@ def demo_subject():
 
     sensor_bus.complete()
     print("[генерацію завершено - всі підписники в курсі]\n")
+
+async def demo_async_subject():
+    print("-" * 40)
+    print("Демо 4: Асинхронний Subject")
+    print("-" * 40)
+
+    bus: Subject[SensorReading] = Subject()
+
+    counts: dict[str, int] = {"monitor": 0, "recorder": 0}
+
+    bus.subscribe(
+        on_next=lambda r: counts.__setitem__("monitor", counts["monitor"] + 1),
+        on_complete=lambda: print(f"Монітор завершив роботу, отримано {counts['monitor']} записів")
+    )
+    bus.subscribe(
+        on_next=lambda r: counts.__setitem__("recorder", counts["recorder"] + 1),
+        on_complete=lambda: print(f"Рекордер завершив роботу, отримано {counts['recorder']} записів")
+    )
+
+    async def temperature_producer():
+        for i in range(6):
+            bus.next(SensorReading(f"TMP-{i:02}", "температура", round(20 + random.uniform(-3, 3), 1), "C"))
+            await asyncio.sleep(0.05)
+
+    async def motion_producer():
+        for i in range(4):
+            bus.next(SensorReading(f"PIR-{i:02}", "рух", 1.0, "виявлено"))
+            await asyncio.sleep(0.07)
+
+    print("\nЗапуск двох асинхронних генераторів...")
+    await asyncio.gather(temperature_producer(), motion_producer())
+    bus.complete()
+    print()
+
+async def main():
+    print("\nДемо реактивної комунікації: Розумний дім\n")
+
+    demo_event_emitter()
+    demo_observable()
+    demo_subject()
+    await demo_async_subject()
+
+    print("-" * 40)
+    print("Що ми тут показали:")
+    print("-" * 40)
+    rows = [
+        ("EventEmitter", "Паб/саб по іменах подій, метод once()"),
+        ("Observable", "Лінивий потік, оператори map/filter/merge"),
+        ("Subject", "Гарячий міст - пуш даних на багато підписок"),
+        ("Subscription", "Токен підписки з методом unsubscribe()"),
+        ("Context manager", "Блок with для авто-відписки"),
+        ("Асинхронність", "Кілька корутин пишуть в один Subject"),
+    ]
+    for name, desc in rows:
+        print(f" {name:<18} | {desc}")
+    print()
+
+if __name__ == "__main__":
+    asyncio.run(main())
